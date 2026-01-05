@@ -1,130 +1,170 @@
 # Orryin Backend — MVP v1
 
-## Overview
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.1.0-009688?logo=fastapi&logoColor=white)](#)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](#)
+[![License](https://img.shields.io/badge/License-TBD-lightgrey)](#)
 
-Orryin is a backend system designed to enable **global (non‑U.S.) users** to access U.S. investing infrastructure in a compliant, modular way.
+Backend MVP that validates Orryin’s **end-to-end flow** for cross-border investing infrastructure:
+**Users → KYC (Sumsub) → FX (Wise sandbox) → Brokerage (DriveWealth mock)**.
 
-This repository contains the **Backend MVP v1**, focused on validating:
-- User creation
-- KYC onboarding (Sumsub)
-- FX payments (Wise – sandbox)
-- Brokerage account creation (DriveWealth – mock)
-- End‑to‑end system orchestration
-
-This MVP is **system‑validation focused**, not production‑ready.
+> **MVP intent:** system validation & integration scaffolding — **not production-ready**.
 
 ---
 
-## Tech Stack
+## What this MVP proves
 
-- **FastAPI** – API framework  
-- **SQLAlchemy (2.0)** – ORM  
-- **SQLite (dev)** – Local development DB  
-- **Pydantic v2** – Data validation  
-- **httpx** – External API calls  
-
----
-
-## Architecture
-
-```
-Client (Web / Mobile)
-        ↓
-FastAPI Backend
-        ↓
-------------------------------------------------
-| Users | KYC | Payments | Brokerage | MVP Flow |
-------------------------------------------------
-        ↓
- External Services (Sandbox / Mock)
-   - Sumsub (KYC)
-   - Wise (FX)
-   - DriveWealth (Brokerage)
-```
+- ✅ User + cash account creation
+- ✅ Idempotent Sumsub applicant creation (**handles 409 already-exists**)
+- ✅ KYC status fetch endpoint for app UI
+- ✅ Wise FX rate fetch + sandbox transfer simulation
+- ✅ DriveWealth onboarding (mock) + account persistence
+- ✅ One-call **system test** returning a unified JSON snapshot
 
 ---
 
-## Key Endpoint — System Test
+## Tech stack
 
-### POST `/mvp/test-flow`
-
-Runs the full backend MVP flow:
-
-1. Create dev user & cash account  
-2. Create or reuse KYC applicant (idempotent)  
-3. Fetch FX rate and simulate transfer  
-4. Create brokerage account (mock)  
-5. Return a unified JSON snapshot  
-
-This endpoint is used to validate **system integrity end‑to‑end**.
+- **FastAPI**
+- **SQLAlchemy 2.0**
+- **Pydantic v2**
+- **SQLite (dev)** — auto-creates tables on startup
+- **httpx** for external calls
 
 ---
 
-## KYC
+## Repo structure
 
 ```
-POST /kyc/applicant
-GET  /kyc/status
-POST /kyc/webhook/sumsub
-```
-
-- Idempotent applicant creation
-- Handles Sumsub `409 already exists`
-- Webhook updates approval status
-
----
-
-## Payments
-
-```
-GET  /payments/fx-rate
-POST /payments/transfer/sandbox
+orryin-backend/
+  app/
+    main.py                 # FastAPI app + SQLite dev table init
+    config.py               # settings (loads env vars)
+    db.py                   # SQLAlchemy engine/session/base
+    models/                 # ORM tables
+    routers/                # API routes
+    integrations/           # Sumsub/Wise/DriveWealth clients
+  .env                      # local dev (DO NOT commit)
+  requirements.txt / pyproject.toml
 ```
 
 ---
 
-## Brokerage
+## Quickstart (local)
 
-```
-POST /brokerage/onboard
-GET  /brokerage/accounts/{user_id}
-```
-
----
-
-## Local Development
+### 1) Create venv + install deps
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+```
+
+### 2) Configure environment
+
+Create a `.env` file in the repo root (example keys):
+
+```env
+DB_URL=sqlite:///./orryin_dev.db
+DB_ECHO=false
+
+SUMSUB_BASE_URL=https://api.sumsub.com
+SUMSUB_LEVEL_NAME=basic-kyc-level
+SUMSUB_APP_TOKEN=your_token
+SUMSUB_SECRET_KEY=your_secret
+
+WISE_BASE_URL=https://api.sandbox.transferwise.tech
+WISE_API_TOKEN=your_token
+
+DRIVEWEALTH_BASE_URL=https://mock.local
+DRIVEWEALTH_API_TOKEN=mock
+```
+
+> **Never commit `.env`, database files, or `.venv/`.** Use `.gitignore`.
+
+### 3) Run the server
+
+```bash
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Swagger UI:
-```
-http://127.0.0.1:8000/docs
-```
+- `http://127.0.0.1:8000/docs`
 
 ---
 
-## Database
+## System test endpoint (one-call validation)
 
-- SQLite is used **only for development**
-- Tables auto‑create on startup
-- Designed for PostgreSQL migration
+### `POST /mvp/test-flow`
+
+Runs:
+1) create dev user & cash account  
+2) create/reuse KYC applicant (idempotent)  
+3) fetch FX rate + sandbox quote/transfer  
+4) create brokerage account (mock)  
+5) return unified JSON snapshot
+
+This is the MVP “smoke test” to confirm the backend wiring is intact.
+
+---
+
+## Key KYC endpoints
+
+- `POST /kyc/applicant` — create applicant (**idempotent**, 409-safe)
+- `GET /kyc/status?user_id=<id>` — fetch current KYC status (for UI)
+- `POST /kyc/webhook/sumsub` — webhook to update approval state
+
+**Idempotent logic**
+- If a KYC row exists for `user_id`, return it (no new Sumsub call).
+- If Sumsub returns **409 already exists**, treat as success and parse `applicant_id`.
+
+---
+
+## Database notes
+
+- SQLite is used **for dev only**.
+- Tables auto-create on startup when `DB_URL` is SQLite.
+- For production: migrate to **PostgreSQL** with proper migrations (Alembic).
+
+---
+
+## Troubleshooting
+
+### “409 applicant already exists” in UI
+That’s expected — the backend treats it as success and returns `status=already_exists`.
+
+### Uvicorn “Unable to create process … file not found”
+Common on Windows when the venv path changed or the venv got recreated.
+Fix:
+1) `deactivate`
+2) re-activate venv
+3) run `python -m uvicorn app.main:app --reload` (uses the active python)
+
+---
+
+## Security / compliance reminder
+
+This MVP may reference regulated workflows (KYC/AML) but **does not implement production-grade security**:
+- no hardened auth
+- no encryption-at-rest strategy
+- no audit logs
+- no rate limits / abuse protection
+- no secrets management
 
 ---
 
 ## Status
 
-✅ Backend MVP v1 complete  
-🟡 Frontend pending  
-🟡 Production hardening pending  
+- ✅ Backend MVP v1
+- 🟡 Frontend integration in progress
+- 🟡 Postgres + migrations (Alembic) pending
+- 🟡 Production hardening pending
 
 ---
 
-## Disclaimer
+## License
 
-This repository is a **technical MVP**, not production software.
-It exists to validate architecture, integrations, and system flows.
+TBD
