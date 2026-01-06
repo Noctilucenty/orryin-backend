@@ -17,7 +17,8 @@ app = FastAPI(title="Orryin Backend", version="0.1.0")
 
 def _init_db() -> None:
     """
-    Create tables for SQLite dev DB if they don't exist.
+    Create tables if they don't exist.
+    For MVP deployments (including Railway Postgres), we rely on SQLAlchemy create_all.
     Safe to call multiple times.
     """
     try:
@@ -28,23 +29,21 @@ def _init_db() -> None:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    if str(settings.db_url).startswith("sqlite"):
-        _init_db()
+    # MVP: ensure tables exist for both SQLite dev and Postgres deploys
+    _init_db()
 
 
+# MVP CORS: allow all origins to avoid web demo issues.
+# Tighten this for production hardening.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:8081",
-        "http://127.0.0.1",
-        "http://127.0.0.1:8081",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Routers
 app.include_router(users_router, prefix="/users", tags=["users"])
 app.include_router(kyc_router, prefix="/kyc", tags=["kyc"])
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
@@ -54,4 +53,4 @@ app.include_router(mvp_router, prefix="/mvp", tags=["mvp"])
 
 @app.get("/")
 def root():
-    return {"status": "Orryin backend running"}
+    return {"status": "ok", "name": settings.app_name, "env": settings.app_env}
