@@ -199,4 +199,5 @@ This MVP references regulated workflows (KYC/AML) but does not implement product
 
 ## License
 
-TBD
+MIT License
+
